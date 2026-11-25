@@ -1,29 +1,53 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const { db } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
-
 const uploadDir = path.join(__dirname, '..', '..', 'uploads');
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadDir),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
-    cb(null, `bb-${Date.now()}-${uuidv4().slice(0, 6)}${ext}`);
-  }
-});
 
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (/^image\/(jpeg|png|webp|gif)$/.test(file.mimetype)) cb(null, true);
     else cb(new Error('Only JPG, PNG, WEBP, or GIF images up to 5MB are allowed.'));
   }
 });
+
+async function saveUploadedImage(file) {
+  const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+  const fileName = `bb-${Date.now()}-${uuidv4().slice(0, 6)}${ext}`;
+  const privateKey = (process.env.IMAGEKIT_PRIVATE_KEY || '').trim();
+
+  if (privateKey) {
+    const form = new FormData();
+    form.append('file', `data:${file.mimetype};base64,${file.buffer.toString('base64')}`);
+    form.append('fileName', fileName);
+    form.append('folder', '/billboards');
+
+    const authHeader = `Basic ${Buffer.from(`${privateKey}:`).toString('base64')}`;
+    const response = await fetch('https://upload.imagekit.io/api/v1/files/upload', {
+      method: 'POST',
+      headers: { Authorization: authHeader },
+      body: form
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.url) {
+      throw new Error(data.message || 'ImageKit upload failed. Check IMAGEKIT_PRIVATE_KEY.');
+    }
+    return data.url;
+  }
+
+  // Local development fallback when IMAGEKIT_PRIVATE_KEY is not set
+  fs.mkdirSync(uploadDir, { recursive: true });
+  fs.writeFileSync(path.join(uploadDir, fileName), file.buffer);
+  return `/uploads/${fileName}`;
+}
 
 // GET /api/billboards — OLX-style filtering, sorting, and dynamic facet counts
 router.get('/', async (req, res, next) => {
@@ -43,7 +67,6 @@ router.get('/', async (req, res, next) => {
 
     const all = await db.listBillboards();
 
-    // Build facets from full inventory (or city-scoped inventory for localities)
     const categoryCounts = {};
     const cityCounts = {};
     const localitySet = new Set();
@@ -56,7 +79,7 @@ router.get('/', async (req, res, next) => {
       }
     }
 
-    let filtered = all.filter((b) => {
+    const filtered = all.filter((b) => {
       if (q.trim()) {
         const needle = q.trim().toLowerCase();
         const hay = `${b.title} ${b.city} ${b.locality} ${b.landmark} ${b.category} ${b.description}`.toLowerCase();
@@ -129,7 +152,9 @@ router.post('/', requireAuth, upload.single('image'), async (req, res, next) => 
     }
 
     const seller = await db.findUserById(req.user.id);
-    const uploadedPath = req.file ? `/uploads/${req.file.filename}` : (image_url || '').trim();
+    const uploadedPath = req.file
+      ? await saveUploadedImage(req.file)
+      : (image_url || '').trim();
 
     const created = await db.createBillboard({
       id: `bb-${uuidv4().slice(0, 8)}`,
