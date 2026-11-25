@@ -16,7 +16,17 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.set('trust proxy', 1);
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        'img-src': ["'self'", 'data:', 'blob:', 'https://ik.imagekit.io', 'https:']
+      }
+    }
+  })
+);
 app.use(
   cors({
     origin: process.env.CLIENT_URL ? process.env.CLIENT_URL.split(',') : true,
