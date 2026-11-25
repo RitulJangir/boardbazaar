@@ -10,11 +10,4 @@ services:
         value: production
       - key: JWT_SECRET
         generateValue: true
-      - key: DATABASE_URL
-        fromDatabase:
-          name: boardbazaar-db
-          property: connectionString
 
-databases:
-  - name: boardbazaar-db
-    plan: free
