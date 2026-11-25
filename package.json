@@ -1,0 +1,16 @@
+{
+  "name": "boardbazaar-fullstack",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BoardBazaar - Full-stack Indian Billboard & Hoarding Rental Marketplace",
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "build": "npm --prefix client run build",
+    "start": "npm --prefix server start",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
